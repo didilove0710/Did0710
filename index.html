@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>毛孩聖誕紙娃娃佈置台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      margin: 0;
+      background: #F9F1E6;
+      color: #2F4A3B;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", system-ui, sans-serif;
+    }
+    .paper-shadow {
+      box-shadow: 0 8px 30px rgba(47, 74, 59, 0.12), 0 2px 8px rgba(47, 74, 59, 0.08);
+    }
+    .dashed-empty {
+      border: 1.5px dashed rgba(47, 74, 59, 0.22);
+      background: rgba(255, 255, 255, 0.6);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="module">
+    import React, { useState, useRef, useEffect, useCallback } from 'https://esm.sh/react@18.3.1';
+    import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client';
+
+    // =========================================================================
+    // 🖼️ 圖片資源與設定集中管理區 (可以在此替換圖片路徑與名稱)
+    // =========================================================================
+    const ASSETS_CONFIG = {
+      // 🐶 狗狗列表
+      dogs: [
+        { id: 'chihuahua', tw: '吉娃娃', label: '小小大魔王', sub: '蓬鬆尾巴奶油色', file: 'chihuahua.png', local: './assets/dogs/IMG_0875.png' },
+        { id: 'shiba',     tw: '博美',   label: '綠圍巾柴',   sub: '綠圍巾聖誕帽',   file: 'shiba.png',     local: './assets/dogs/IMG_0881.png' },
+        { id: 'poodle',    tw: '貴賓',   label: '捲毛雪球',   sub: '捲毛雲朵感',     file: 'poodle.png',    local: './assets/dogs/IMG_0879.png' },
+        { id: 'corgi',     tw: '柯基',   label: '短腿暖爐',   sub: '小短腿大笑容',   file: 'corgi.png',     local: './assets/dogs/IMG_0880.png' },
+        { id: 'mix',       tw: '米克斯', label: '獨一無二',   sub: '最特別的你',     file: 'mix.png',       local: './assets/dogs/IMG_0876.png' },
+      ],
+      // 🎄 配件列表
+      accessories: [
+        { id: 'santa_hat', tw: '聖誕帽', desc: '紅色聖誕帽',   file: 'santa_hat.png', local: './assets/accessories/santa_hat.png' },
+        { id: 'reindeer',  tw: '鹿角',   desc: '麋鹿角髮箍',   file: 'reindeer.png',  local: './assets/accessories/reindeer.png' },
+        { id: 'scarf',     tw: '圍巾',   desc: '綠色毛線圍巾', file: 'scarf.png',     local: './assets/accessories/scarf.png' },
+        { id: 'bow',       tw: '蝴蝶結', desc: '粉色蝴蝶結',   file: 'bow.png',       local: './assets/accessories/bow.png' },
+        { id: 'bell',      tw: '鈴鐺',   desc: '金色鈴鐺',     file: 'bell.png',      local: './assets/accessories/bell.png' },
+        { id: 'snow',      tw: '雪花',   desc: '雪花貼紙',     file: 'snow.png',      local: './assets/accessories/snow.png' },
+        { id: 'gift',      tw: '禮物',   desc: '禮物盒',       file: 'gift.png',      local: './assets/accessories/gift.png' },
+        { id: 'sock',      tw: '聖誕襪', desc: '聖誕襪',       file: 'sock.png',      local: './assets/accessories/sock.png' },
+      ],
+      // 🎨 背景配色列表
+      backgrounds: [
+        { id: 'cream',    tw: '奶油白', color: '#FFFBF2' },
+        { id: 'forest',   tw: '森林綠', color: '#E8EFE7' },
+        { id: 'plaid',    tw: '格紋紅', color: '#FDF0F0' },
+        { id: 'midnight', tw: '午夜藍', color: '#EEF2F8' },
+      ]
+    };
+
+    // 預設 SVG 缺圖備援
+    const EMPTY_SVG = (label) => `data:image/svg+xml,${encodeURIComponent(
+      `<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'>
+        <rect width='100%' height='100%' fill='#FFFBF2'/>
+        <circle cx='200' cy='150' r='70' fill='#E8EFE7'/>
+        <text x='50%' y='260' text-anchor='middle' font-size='22' fill='#2F4A3B' font-family='sans-serif'>${label}</text>
+        <text x='50%' y='290' text-anchor='middle' font-size='12' fill='#9CA89E'>本地圖片待放入</text>
+      </svg>`
+    )}`;
+
+    // =========================================================================
+    // 🚀 主要應用程式元件
+    // =========================================================================
+    function App() {
+      const [bgId, setBgId] = useState('cream');
+      const [layers, setLayers] = useState([]);
+      const [selectedId, setSelectedId] = useState(null);
+      const [customDog, setCustomDog] = useState({});
+      const [customAcc, setCustomAcc] = useState({});
+      const [drag, setDrag] = useState(null);
+      const [status, setStatus] = useState('已修正本地顯示');
+      
+      const canvasRef = useRef(null);
+
+      const bg = ASSETS_CONFIG.backgrounds.find(b => b.id === bgId) || ASSETS_CONFIG.backgrounds[0];
+      const selected = layers.find(l => l.id === selectedId) || null;
+
+      // 新增圖層
+      const addLayer = useCallback((type, def) => {
+        const map = type === 'dog' ? customDog : customAcc;
+        const realPath = map[def.id] || def.local;
+
+        const newLayer = {
+          id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+          type,
+          defId: def.id,
+          realSrc: realPath,
+          label: def.tw,
+          alt: `${def.tw} - ${def.label || def.desc || ''} - ${def.file}`,
+          x: 300 + (Math.random() - 0.5) * 80,
+          y: 420 + (Math.random() - 0.5) * 80,
+          scale: type === 'dog' ? 1 : 0.9,
+          rotation: (Math.random() - 0.5) * 12,
+          z: layers.length + 1,
+        };
+
+        setLayers(prev => [...prev, newLayer]);
+        setSelectedId(newLayer.id);
+        setStatus(`已加入 ${def.tw}`);
+      }, [layers.length, customDog, customAcc]);
+
+      // 拖拽互動監聽
+      useEffect(() => {
+        const handleMove = (e) => {
+          if (!drag || !canvasRef.current) return;
+          const rect = canvasRef.current.getBoundingClientRect();
+          const sx = 600 / rect.width;
+          const sy = 840 / rect.height;
+          const x = (e.clientX - rect.left) * sx;
+          const y = (e.clientY - rect.top) * sy;
+
+          setLayers(prev => prev.map(l => l.id === drag.id ? { ...l, x: x - drag.dx, y: y - drag.dy } : l));
+        };
+
+        const handleUp = () => setDrag(null);
+
+        window.addEventListener('pointermove', handleMove);
+        window.addEventListener('pointerup', handleUp);
+        return () => {
+          window.removeEventListener('pointermove', handleMove);
+          window.removeEventListener('pointerup', handleUp);
+        };
+      }, [drag]);
+
+      // 操作選中的圖層
+      const updateSelected = (patch) => {
+        if (!selectedId) return;
+        setLayers(prev => prev.map(l => l.id === selectedId ? { ...l, ...patch } : l));
+      };
+
+      const deleteSelected = () => {
+        if (!selectedId) return;
+        setLayers(prev => prev.filter(l => l.id !== selectedId));
+        setSelectedId(null);
+      };
+
+      const duplicateSelected = () => {
+        if (!selected) return;
+        const dup = { ...selected, id: `dup-${Date.now()}`, x: selected.x + 20, y: selected.y + 20, z: layers.length + 1 };
+        setLayers(prev => [...prev, dup]);
+        setSelectedId(dup.id);
+      };
+
+      const moveZ = (dir) => {
+        if (!selected) return;
+        setLayers(prev => {
+          const sorted = [...prev].sort((a, b) => a.z - b.z);
+          const idx = sorted.findIndex(l => l.id === selected.id);
+          if (dir === 'front' && idx < sorted.length - 1) {
+            const tmp = sorted[idx].z;
+            sorted[idx].z = sorted[idx + 1].z;
+            sorted[idx + 1].z = tmp;
+          }
+          if (dir === 'back' && idx > 0) {
+            const tmp = sorted[idx].z;
+            sorted[idx].z = sorted[idx - 1].z;
+            sorted[idx - 1].z = tmp;
+          }
+          return sorted;
+        });
+      };
+
+      // 檔案上傳替換處理
+      const handleUploadDog = (id, file) => {
+        const url = URL.createObjectURL(file);
+        setCustomDog(m => ({ ...m, [id]: url }));
+        setLayers(prev => prev.map(l => l.defId === id && l.type === 'dog' ? { ...l, realSrc: url } : l));
+        setStatus(`已上傳替換 ${ASSETS_CONFIG.dogs.find(d => d.id === id)?.tw}`);
+      };
+
+      const handleUploadAcc = (id, file) => {
+        const url = URL.createObjectURL(file);
+        setCustomAcc(m => ({ ...m, [id]: url }));
+        setLayers(prev => prev.map(l => l.defId === id && l.type === 'accessory' ? { ...l, realSrc: url } : l));
+      };
+
+      // 匯出 PNG 畫布
+      const exportPNG = async () => {
+        setStatus('匯出中...');
+        const canvas = document.createElement('canvas');
+        canvas.width = 1200;
+        canvas.height = 1680;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.fillStyle = bg.color;
+        ctx.fillRect(0, 0, 1200, 1680);
+
+        const sorted = [...layers].sort((a, b) => a.z - b.z);
+        for (const layer of sorted) {
+          ctx.save();
+          ctx.translate(layer.x * 2, layer.y * 2);
+          ctx.rotate(layer.rotation * Math.PI / 180);
+          ctx.scale(layer.scale * 2, layer.scale * 2);
+          
+          try {
+            const img = new Image();
+            await new Promise((res) => {
+              img.onload = res;
+              img.onerror = res;
+              img.crossOrigin = 'anonymous';
+              img.src = layer.realSrc;
+              setTimeout(res, 1500);
+            });
+
+            if (img.naturalWidth > 0) {
+              const size = layer.type === 'dog' ? 220 : 140;
+              ctx.drawImage(img, -size / 2, -size / 2, size, size);
+            } else {
+              ctx.fillStyle = 'rgba(47,74,59,0.12)';
+              ctx.fillRect(-110, -110, 220, 220);
+              ctx.fillStyle = '#2F4A3B';
+              ctx.font = 'bold 24px sans-serif';
+              ctx.textAlign = 'center';
+              ctx.fillText(layer.label, 0, 0);
+            }
+          } catch (e) {}
+          ctx.restore();
+        }
+
+        const url = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `christmas-dog-${Date.now()}.png`;
+        a.click();
+        setStatus('已匯出 1200x1680');
+      };
+
+      // 渲染畫面介面
+      return React.createElement('div', { className: 'min-h-screen w-full' },
+        // 頂部導覽列
+        React.createElement('header', { className: 'sticky top-0 z-30 backdrop-blur-xl border-b border-[#2F4A3B]/10', style: { background: 'rgba(249,241,230,0.9)' } },
+          React.createElement('div', { className: 'max-w-[1480px] mx-auto px-4 md:px-6 h-[64px] flex items-center justify-between' },
+            React.createElement('div', { className: 'flex items-center gap-3' },
+              React.createElement('div', { className: 'w-9 h-9 rounded-full bg-[#2F4A3B] text-[#FFFBF2] grid place-items-center text-[18px]' }, '紙'),
+              React.createElement('div', {},
+                React.createElement('h1', { className: 'text-[18px] font-semibold' }, '毛孩聖誕紙娃娃佈置台'),
+                React.createElement('p', { className: 'text-[11px] text-[#2F4A3B]/60' }, status)
+              )
+            ),
+            React.createElement('div', { className: 'flex gap-2' },
+              React.createElement('button', { onClick: () => setLayers([]), className: 'h-9 px-4 rounded-full border bg-white text-[13px]' }, '清空'),
+              React.createElement('button', { onClick: exportPNG, className: 'h-9 px-5 rounded-full bg-[#2F4A3B] text-white text-[13px]' }, '匯出 PNG')
+            )
+          )
+        ),
+
+        // 主工作區
+        React.createElement('main', { className: 'max-w-[1480px] mx-auto px-3 md:px-6 py-5 grid grid-cols-1 lg:grid-cols-[300px_1fr_320px] gap-5' },
+          
+          // 👈 左側選單欄
+          React.createElement('aside', { className: 'order-2 lg:order-1 space-y-4' },
+            // 背景選擇
+            React.createElement('section', { className: 'rounded-[20px] bg-[#FFFBF2] border paper-shadow p-4' },
+              React.createElement('h2', { className: 'text-[14px] font-semibold' }, '背景'),
+              React.createElement('div', { className: 'grid grid-cols-2 gap-2 mt-3' },
+                ASSETS_CONFIG.backgrounds.map(b => 
+                  React.createElement('button', { key: b.id, onClick: () => setBgId(b.id), className: `rounded-[14px] border overflow-hidden ${bgId === b.id ? 'ring-2 ring-[#2F4A3B]' : ''}` },
+                    React.createElement('div', { className: 'h-[60px]', style: { background: b.color } }),
+                    React.createElement('div', { className: 'px-3 py-1 text-[12px] bg-white' }, b.tw)
+                  )
+                )
+              )
+            ),
+
+            // 毛孩選擇
+            React.createElement('section', { className: 'rounded-[20px] bg-white border paper-shadow p-4' },
+              React.createElement('h2', { className: 'text-[14px] font-semibold' }, '毛孩選單'),
+              React.createElement('div', { className: 'mt-3 space-y-2' },
+                ASSETS_CONFIG.dogs.map(d => {
+                  const displaySrc = customDog[d.id] || d.local;
+                  return React.createElement('div', { key: d.id, className: 'rounded-[14px] border p-2.5 flex gap-3' },
+                    React.createElement('div', { className: 'w-[64px] h-[64px] rounded-[12px] overflow-hidden bg-[#F9F1E6] grid place-items-center' },
+                      React.createElement('img', { src: displaySrc, alt: `${d.tw} - ${d.label} - ${d.file}`, className: 'w-full h-full object-contain', onError: (e) => { e.currentTarget.src = EMPTY_SVG(d.tw); } })
+                    ),
+                    React.createElement('div', { className: 'flex-1' },
+                      React.createElement('div', { className: 'text-[13px] font-medium' }, d.tw),
+                      React.createElement('div', { className: 'text-[11px] text-[#2F4A3B]/60' }, `${d.label} • ${d.local}`),
+                      React.createElement('div', { className: 'flex gap-1.5 mt-2' },
+                        React.createElement('button', { onClick: () => addLayer('dog', d), className: 'h-7 px-3 rounded-full bg-[#2F4A3B] text-white text-[11px]' }, '+ 加入'),
+                        React.createElement('label', { className: 'h-7 px-3 rounded-full border bg-[#F9F1E6] text-[11px] grid place-items-center cursor-pointer' },
+                          '替換上傳',
+                          React.createElement('input', { type: 'file', accept: 'image/*', className: 'hidden', onChange: (e) => { const f = e.target.files?.[0]; if (f) handleUploadDog(d.id, f); } })
+                        )
+                      )
+                    )
+                  );
+                })
+              )
+            ),
+
+            // 配件選擇
+            React.createElement('section', { className: 'rounded-[20px] bg-white border paper-shadow p-4' },
+              React.createElement('h2', { className: 'text-[14px] font-semibold' }, '配件'),
+              React.createElement('div', { className: 'grid grid-cols-4 gap-2 mt-3' },
+                ASSETS_CONFIG.accessories.map(a => {
+                  const displaySrc = customAcc[a.id] || a.local;
+                  return React.createElement('div', { key: a.id, className: 'flex flex-col items-center gap-1' },
+                    React.createElement('button', { onClick: () => addLayer('accessory', a), className: 'w-full aspect-square rounded-[14px] border bg-white grid place-items-center' },
+                      React.createElement('img', { src: displaySrc, alt: `${a.tw} - ${a.desc} - ${a.file}`, className: 'w-[42px] h-[42px] object-contain', onError: (e) => { e.currentTarget.src = EMPTY_SVG(a.tw); } })
+                    ),
+                    React.createElement('span', { className: 'text-[10px]' }, a.tw),
+                    React.createElement('label', { className: 'text-[9px] text-[#2F4A3B]/50 cursor-pointer' }, '上傳',
+                      React.createElement('input', { type: 'file', className: 'hidden', accept: 'image/*', onChange: (e) => { const f = e.target.files?.[0]; if (f) handleUploadAcc(a.id, f); } })
+                    )
+                  );
+                })
+              )
+            )
+          ),
+
+          // 🎨 中央畫布區
+          React.createElement('section', { className: 'order-1 lg:order-2 flex flex-col items-center' },
+            React.createElement('div', {
+              ref: canvasRef,
+              className: 'relative w-full max-w-[560px] aspect-[600/840] rounded-[24px] overflow-hidden paper-shadow border',
+              style: { background: bg.color },
+              onClick: () => setSelectedId(null)
+            },
+              layers.sort((a, b) => a.z - b.z).map(layer => {
+                const isSel = layer.id === selectedId;
+                return React.createElement('div', {
+                  key: layer.id,
+                  className: 'absolute select-none',
+                  style: { left: layer.x, top: layer.y, transform: `translate(-50%,-50%) scale(${layer.scale}) rotate(${layer.rotation}deg)`, zIndex: layer.z },
+                  onPointerDown: (e) => {
+                    e.stopPropagation();
+                    setSelectedId(layer.id);
+                    const rect = canvasRef.current?.getBoundingClientRect();
+                    if (!rect) return;
+                    const sx = 600 / rect.width, sy = 840 / rect.height;
+                    const x = (e.clientX - rect.left) * sx, y = (e.clientY - rect.top) * sy;
+                    setDrag({ id: layer.id, dx: x - layer.x, dy: y - layer.y });
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                  }
+                },
+                  React.createElement('div', { className: `relative ${isSel ? 'ring-2 ring-[#2F4A3B] ring-offset-2 rounded-[12px]' : ''}` },
+                    React.createElement('img', {
+                      src: layer.realSrc,
+                      alt: layer.alt,
+                      width: 500,
+                      className: `block ${layer.type === 'dog' ? 'w-[200px] h-[200px]' : 'w-[120px] h-[120px]'} object-contain pointer-events-none`,
+                      onError: (e) => { e.currentTarget.src = EMPTY_SVG(layer.label); }
+                    })
+                  )
+                );
+              })
+            ),
+            React.createElement('div', { className: 'mt-3 text-[11px] text-[#2F4A3B]/60' }, '說明：請使用 Live Server 開啟網頁，避免以 file:// 直接打開導致圖片無法載入。')
+          ),
+
+          // 👉 右側編輯欄
+          React.createElement('aside', { className: 'order-3 space-y-4' },
+            React.createElement('section', { className: 'rounded-[20px] bg-[#FFFBF2] border paper-shadow p-4' },
+              React.createElement('h2', { className: 'text-[13px] font-semibold' }, '圖層編輯'),
+              selected ? React.createElement('div', { className: 'space-y-3 mt-3' },
+                React.createElement('div', { className: 'flex gap-2 items-center' },
+                  React.createElement('img', { src: selected.realSrc, alt: selected.alt, className: 'w-[56px] h-[56px] rounded-[12px] bg-white border object-contain', onError: (e) => { e.currentTarget.src = EMPTY_SVG(selected.label); } }),
+                  React.createElement('div', {},
+                    React.createElement('div', { className: 'text-[13px] font-medium' }, selected.label),
+                    React.createElement('div', { className: 'text-[10px] text-[#2F4A3B]/50 break-all' }, selected.realSrc)
+                  )
+                ),
+                React.createElement('div', {},
+                  React.createElement('label', { className: 'text-[11px]' }, `縮放 ${Math.round(selected.scale * 100)}%`),
+                  React.createElement('input', { type: 'range', min: 0.3, max: 2, step: 0.05, value: selected.scale, onChange: (e) => updateSelected({ scale: parseFloat(e.target.value) }), className: 'w-full accent-[#2F4A3B]' })
+                ),
+                React.createElement('div', {},
+                  React.createElement('label', { className: 'text-[11px]' }, `旋轉 ${Math.round(selected.rotation)}°`),
+                  React.createElement('input', { type: 'range', min: -180, max: 180, step: 1, value: selected.rotation, onChange: (e) => updateSelected({ rotation: parseFloat(e.target.value) }), className: 'w-full accent-[#2F4A3B]' })
+                ),
+                React.createElement('div', { className: 'grid grid-cols-2 gap-2' },
+                  React.createElement('button', { onClick: () => moveZ('front'), className: 'h-8 rounded-full border bg-white text-[11px]' }, '上移'),
+                  React.createElement('button', { onClick: () => moveZ('back'), className: 'h-8 rounded-full border bg-white text-[11px]' }, '下移'),
+                  React.createElement('button', { onClick: duplicateSelected, className: 'h-8 rounded-full border bg-white text-[11px]' }, '複製'),
+                  React.createElement('button', { onClick: deleteSelected, className: 'h-8 rounded-full bg-[#C94A3D]/10 border text-[#C94A3D] text-[11px]' }, '刪除')
+                )
+              ) : React.createElement('div', { className: 'mt-3 text-[12px] text-[#2F4A3B]/50' }, '點選畫布上的物件即可進行編輯')
+            )
+          )
+        )
+      );
+    }
+
+    // 掛載主元件
+    createRoot(document.getElementById('root')).render(React.createElement(App));
+  </script>
+</body>
+</html>
